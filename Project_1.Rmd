@@ -1,0 +1,519 @@
+---
+title: 'Project_1: How old the mussel is'
+output:
+  pdf_document:
+    toc: yes
+    toc_depth: '3'
+  html_document:
+    toc: yes
+    toc_position: right
+    toc_depth: 3
+    toc_float: yes
+    smooth_scroll: no
+    theme: united
+---
+
+```{r setup, include=FALSE, message = FALSE}
+options(width = 70, scipen = 16, digits = 3, scipen = 999) 
+knitr::opts_chunk$set(echo = TRUE, tidy = FALSE)
+```
+
+This project is dedicated to the study of mussels. In this project, for each mussels the following were measured: the number of rings, sex (male, female, and infant), length of the mussel, diameter, width, shell length and others.
+
+## Task1
+Combine observations into a single table.
+Several people took part in the measurement of the parameters. Therefore, it is necessary to combine all data into one table.
+Libraries installing. 
+```{r, message=FALSE}
+# Packages
+require(dplyr)
+require(ggplot2)
+require(DAAG)
+require(GGally)
+require(reshape)
+require(ggcorrplot)
+require(Hmisc)
+require(psych)
+require(factoextra)
+require(devtools)
+require(vegan)
+#install_github("vqv/ggbiplot", force = TRUE)
+require(ggbiplot)
+```
+
+Function:
+
+```{r, message = FALSE, error=FALSE}
+# Function
+merge_fun <- function(way){
+setwd(way)
+files <- list.files()
+files <- files[grep("\\.csv$", files)]
+table <- list()
+for (i in seq_along(files)) {
+    table[[i]] <- read.csv(files[i])
+}
+table_merge <- return(do.call("rbind", table))
+}
+all_data <- merge_fun("C:/R/IB/Projects/Data")
+```
+
+## Task2.1
+Putting the data in order.
+Rename of the second column to "Sex" for convenience.
+
+```{r, message = FALSE}
+names(all_data)[2] <- "Sex"
+```
+
+Checking for the presence of NA values in a table.
+
+```{r, message = FALSE}
+colSums(is.na(all_data))
+```
+NA values are present. 
+checking if all values are "numeric" in "Rings" column.
+
+```{r, message = FALSE, warning = FALSE}
+all_data$Rings_no_num <- !(is.na(as.numeric(all_data$Rings)))
+all_data[all_data$Rings_no_num == FALSE, ]
+```
+There is "nine" value in "Rings" column. Change it to the number 9.
+
+```{r, message = FALSE}
+all_data$Rings <- replace(all_data$Rings, all_data$Rings == 'nine', 9)
+all_data$Rings_no_num <- !(is.na(as.numeric(all_data$Rings)))
+all_data[all_data$Rings_no_num == FALSE, ]
+```
+Now there is no text values. 
+Now check if all values are "numeric" in "Sex" column.
+
+```{r, message = FALSE, warning = FALSE}
+all_data$Sex_no_num <- !(is.na(as.numeric(all_data$Sex)))
+all_data[all_data$Sex_no_num == FALSE, ]
+```
+Change three "non-numeric" values to numbers.
+
+```{r, message = FALSE}
+all_data$Sex <- replace(all_data$Sex, all_data$Sex == 'three', 3)
+all_data$Sex <- replace(all_data$Sex, all_data$Sex == 'one', 1)
+all_data$Sex <- replace(all_data$Sex, all_data$Sex == 'male', 1)
+```
+
+In "Sex" column there is NA value. It cannot be replaced with median and mean, so we will delete this line. 
+
+```{r, message = FALSE}
+all_data <- all_data[-343, ]
+```
+
+Identifying "non-numeric" values for the "Length" column.
+
+```{r, message = FALSE, warning = FALSE}
+all_data$Length_no_num <- !(is.na(as.numeric(all_data$Length)))
+all_data[all_data$Length_no_num == FALSE, ]
+```
+
+Change NA values and text in all data to median in "Length" column. We choose median because it is more resistant to outliers.
+
+```{r, message = FALSE, warning = FALSE}
+all_data$Length <- replace(all_data$Length, all_data$Length == 'No data! I forgot to mesure it!(', median(all_data$Length))
+all_data$Rings <- as.numeric(all_data$Rings)
+all_data$Sex <- as.numeric(all_data$Sex)
+all_data$Length <- as.numeric(all_data$Length)
+all_data <- all_data %>% mutate_all(funs(ifelse(is.na(.), mean(., na.rm = T), .)))
+```
+
+The result of these actions in "Length" column.
+
+```{r, message = FALSE}
+all_data$Length_no_num <- !(is.na(as.numeric(all_data$Length)))
+all_data[all_data$Length_no_num == FALSE, ]
+```
+
+Check NA values in table. 
+
+```{r, message = FALSE}
+colSums(is.na(all_data))
+```
+
+So, in whole table NA values and text was replaced with median and number. 
+
+```{r, message = FALSE}
+all_data <- all_data [, 1:9 ]
+```
+
+Now all data in the table is correct.
+Rename 1, 2, 3 in "Sex" column to male, female, uvenil.
+
+```{r, message = FALSE}
+all_data$Sex <- factor(all_data$Sex, labels = c("male","female","uvenil"))
+```
+
+## Task2.2
+Checking data for outliers.We can identify outliers, build boxplot for each column. 
+
+Boxplot for "Rings" column (Picture 1).
+
+```{r, message = FALSE}
+qplot(Sex, Rings, data = all_data, 
+      geom=c("boxplot"), main = "Boxplots of Rings by Sex group", aes(group = Sex),) + theme_bw()
+```
+
+_Picture 1_ Boxplots of "Rings" by "Sex" group. 
+
+There are no obvious outliers on the graph, but a lot of values are out of whiskers.
+
+Boxplot for "Length" column (Picture 2).
+
+```{r, message = FALSE}
+qplot(Sex, Length, data = all_data, 
+      geom=c("boxplot"), main = "Boxplots of Length by Sex group", aes(group = Sex)) + theme_bw()
+```
+
+_Picture 2_ Boxplots of "Length" by "Sex" group. 
+
+There are no obvious outliers on the graph, but a lot of values are out of whiskers.
+
+Boxplot for "Diameter" column (Picture 3).
+
+```{r, message = FALSE}
+qplot(Sex, Diameter, data = all_data, 
+      geom=c("boxplot"), main = "Boxplots of Diameter by Sex group", aes(group = Sex)) + theme_bw()
+```
+
+_Picture3_ Boxplots of "Diameter" by "Sex" group.
+
+There are no obvious outliers on the graph, but a lot of values are out of whiskers.
+
+Boxplot for "Height" column (Picture 4).
+
+```{r, message = FALSE}
+qplot(Sex, Height, data = all_data, 
+      geom=c("boxplot"), main = "Boxplots of Height by Sex group", aes(group = Sex)) + theme_bw()
+```
+
+_Picture 4_ Boxplots of "Height" by "Sex" group.
+
+There are several zero values. "Height" cannot be zero values. Also, there are two outliers, which is greater than 0.3. This is 457 and 3953 strings. Delete all these values.
+
+```{r, message = FALSE}
+outs <- all_data[all_data$Height == 0,]
+```
+
+```{r, message = FALSE}
+all_data <- all_data[-c(457, 3953),]
+all_data <- all_data[all_data$Height < 0.3, ]
+```
+
+Boxplot for "Whole_weight" column (Picture 5).
+
+```{r, message = FALSE}
+qplot(Sex, Whole_weight, data = all_data, 
+      geom=c("boxplot"), main = "Boxplots of Whole_weight by Sex group", aes(group = Sex)) + theme_bw()
+```
+
+_Picture 5_ Boxplots of "Whole_weight" by "Sex" group.
+
+There are no obvious outliers on the graph, but a lot of values are out of whiskers.
+
+Boxplot for "Shucked_weight" column (Picture 6).
+
+```{r, message = FALSE}
+qplot(Sex, Shucked_weight, data = all_data, 
+      geom=c("boxplot"), main = "Boxplots of Shucked_weight by Sex group" , aes(group = Sex)) + theme_bw()
+```
+
+_Picture 6_ Boxplots of "Shucked_weight" by "Sex" group.
+
+There is one outliers. This is the highest point in the female group. Delete this value.  
+
+```{r, message = FALSE}
+all_data <- all_data[all_data$Shucked_weight < 1.4, ]
+```
+
+Boxplot for "Viscera_weight" column (Picture 7).
+
+```{r, message = FALSE}
+qplot(Sex, Viscera_weight, data = all_data, 
+      geom=c("boxplot"), main = "Boxplots of Viscera_weight by Sex group", aes(group = Sex)) + theme_bw()
+```
+
+_Picture 7_ Boxplot of "Viscera_weight" by "Sex" group.
+
+Delete one value greater then 0.4 in male group.
+
+```{r, message = FALSE}
+all_data <- all_data[all_data$Viscera_weight < 0.4, ]
+```
+
+Boxplot for "Shell_weight" by "Sex" group (Picture 8).
+
+```{r, message = FALSE}
+qplot(Sex, Shell_weight, data = all_data, 
+      geom=c("boxplot"), main = "Boxplot of Shell_weight by Sex group", aes(group = Sex)) + theme_bw()
+```
+
+_Picture 8_ Boxplot of "Shell_weight" by "Sex" group.
+
+There are no obvious outliers on the graph, but a lot of values are out of whiskers.
+
+General plot for all quantitative variables (Picture 9).
+
+```{r, message = FALSE}
+theme_set(theme_bw())
+ggplot(data=melt(as.data.frame(all_data[-1:-2])), aes(variable, value)) + 
+  geom_boxplot()+
+  theme(axis.text.x = element_text(angle=65, vjust=0.6))+
+  labs(title = "Boxplot for all quantitative variables", x = "Variables", y = "Values")
+
+```
+
+_Picture 9_ General plot for all quantitative variables.
+
+## Task2.3
+
+Check for a relationship between variables.
+To do this, we build a general ggpairs graph (Picture 10). The diagonal of this graph contains graphs of the density distribution, above the diagonal are the correlation coefficients, and below the diagonal are the scatter diagrams.
+
+```{r, message = F, fig.height= 10, fig.width=15}
+ggpairs(all_data, aes(color = Sex, alpha = 0.3), 
+                      upper = list(continuous = wrap ("cor", size = 4.5), theme_bw))
+```
+
+_Picture 10_ Plot matrix, consisting of scatterplots for each variable-combination of a data frame.
+
+There is a strong correlation between the variables.  
+Visualization of correlation matrix for all numeric variables (Picture 11).
+
+```{r, message = FALSE}
+ggcorrplot(round(cor(all_data[,-2]), 1), hc.order = TRUE, 
+           type = "lower", 
+           lab = TRUE, 
+           lab_size = 3, 
+           method="circle", 
+           colors = c("tomato2", "white", "springgreen3"), 
+           title="Correlogram", 
+           ggtheme=theme_bw)
+```
+
+_Picture 11_ correlation matrix for all numeric variables.
+
+p-values for correlation coefficients are much lower than 0.05. It's show how zero values. 
+
+```{r, message = F}
+rcorr(as.matrix(all_data[,-2]), type = 'spearman')
+```
+
+## Task3
+
+Calculation of the mean and standard deviation of the "Length" variable for mussels of different sexes.
+
+Mean: 
+
+```{r}
+tapply(all_data$Length, all_data$Sex, mean)
+```
+Standard deviation:
+
+```{r}
+tapply(all_data$Length, all_data$Sex, sd)
+```
+
+## Task4
+
+What percentage of the Height variable does not exceed 0.165?
+
+```{r}
+task4 <- all_data %>% filter(all_data$Height <= 0.165)
+length(task4$Height)*100/length(all_data$Height)
+```
+
+## Task5
+
+What is the Length variable, which is greater than 92% of all observations?
+
+```{r}
+quantile(all_data$Length, probs = 0.92)
+```
+
+## Task6
+
+Create a new variable "Lenght_z_scores" and store the values of the Length variable in it after it's standardized.
+
+```{r}
+Length_z_scores <- (all_data$Length - mean(all_data$Length))/sd(all_data$Length)
+```
+
+## Task7
+
+Compare the diameter of the mussels with number of rings 5 and 15.
+To do this, we calculate the mean of diameter with the number of rings 5 and 15. 
+
+```{r}
+diam5_values <- all_data %>% filter(all_data$Rings == 5 | all_data$Rings == 15)
+diam5_values$Rings <- factor(diam5_values$Rings, labels = c("five","fifteen"))
+
+diam5 <- mean((all_data %>% filter(all_data$Rings == 5))$Diameter)
+diam15 <- mean((all_data %>% filter(all_data$Rings == 15))$Diameter)
+print(paste("Mean of Dimeter with 5 Rings = ", diam5))
+print(paste('Mean of Dimeter with 15 Rings = ',diam15))
+```
+
+Let's check whether the differences in the diameter of the shell of mussels with 5 and 15 rings are significant using t-test. In order to apply the test, we need to make sure that the data is distributed normally. We use Shapiro-Wilk test for this. 
+
+```{r}
+shapiro.test(diam5_values$Diameter)
+```
+
+p-value in Shapiro-Wilk test <0.05, it means that our data is distributed not normally. But it can be explained by the different sex of the mussels and their mining site. But due to the large number of values, the t-test can be applied.
+
+```{r}
+t.test(diam5_values$Diameter ~ diam5_values$Rings)
+```
+
+The differences in diameter between the 5-Ring and 15-Ring are significant.
+
+## Task8
+
+Find out if there is a relationship between Diameter and Whole_weight?
+Based on the physiology of mussels, we can assume that there is a correlation between these variables.
+Let's check this by plotting "Whole_weight" versus "Diameter" and calculating the correlation coefficient (Picture 12).
+We can approximate our data using linear or non-linear model. 
+
+```{r}
+ggplot(all_data, aes(Diameter, Whole_weight))+
+  geom_point()+
+  stat_smooth()+
+  stat_smooth(method=lm, color = "red")+
+  labs(title = "Scatterplot Whole_weight vs Diameter")
+```
+
+_Picture 12_ The graph of the dependence of the "Whole Weight" variable on "Diameter".
+
+There is exponential relationship between variables. We can see that the non-linear model better describes our data. 
+If we calculate Pearson's correlation coefficient in linear model, it will be 0.932. This indicates a strong correlation between the variables.
+
+```{r}
+cor.test(all_data$Diameter, all_data$Whole_weight)
+```
+
+## Task 9
+
+Try to create multiple linear regression model. We want to build a model for estimating "Whole_weight" based on other variables (exclude "Sex" and "Rings"). 
+
+```{r}
+fit <- lm(Whole_weight ~ Length + Diameter + Height + Shucked_weight + Viscera_weight + Shell_weight, data = all_data)
+summary(fit)
+```
+
+From summary we can see that p-value of the F-statistic is < 0.0000000000000002, which is highly significant. This means that, at least, one of the predictor variables is significantly related to the outcome variable.But this is can be caused by a strong correlation between predictors. 
+
+Check multicollinearity of our data. Let’s first look at the pairwise scatterplots for each of our quantitative predictor variables.
+
+```{r, fig.height=10, fig.width=10}
+plot(all_data[, -1:-2])
+```
+
+_Picture 13_ Scatterplots for each of quantitative predictor variables in data.
+
+Another way to test predictors for multicollinearity is to calculate the Variance inflation factor (VIF). 
+
+```{r}
+sqrt(vif(fit))
+```
+
+We see high HIF values, which indicates the multicollinearity of the predictors.
+
+So, we can see strong collinearity between our variables. Is a problem because it will inflate the standard error of a model as well as make the parameter estimates inconsistent. So, we can't build linear model. 
+
+We can use PCA analysis to to identify groups of samples that are similar and work out which variables make one group different from another.
+Computing the principal components. We center and scale our data (thus standardizing the data). 
+
+```{r}
+all_data.pca <- rda(all_data[,-1:-2], center = TRUE, scale = TRUE)
+head(summary(all_data.pca))
+```
+
+Now we can build scree plot of the variance (i.e. sdev^2) for every principle component (Picture 14).
+
+```{r}
+all_data2.pca = princomp(all_data[,-1:-2], center = TRUE, scale. = TRUE)
+screeplot(all_data2.pca, type = "l", npcs = 7, xlab = "Components", ylab = "Variance", main = "Screeplot of the first 7 PCs")
+```
+
+_Picture 14_ Screeplot of the first 7 PCs.
+
+Also we can build Cumulative variance plot (Picture 15).
+
+```{r}
+plot(cumsum(all_data2.pca$sdev^2 / sum(all_data2.pca$sdev^2)), type= "b", xlab = "PCs", ylab = "Amount of explained variance", main = "Cumulative variance plot")
+abline(v = 3, col="blue", lty=5)
+abline(h = 0.995, col="blue", lty=5)
+```
+
+_Picture 15_ Cumulative variance plot for all PCs.
+
+We notice that the first 3 explains almost 99% of variance. We can effectively reduce dimensionality from 7 to 3. We’ll select number of components as 3 (PC1 to PC3) and will use these 3 components as predictor variables in new model.
+
+Let's show that PC1 and PC2 make a significant contribution. 
+Plotting PCA. We can make a biplot, which includes both the position of each sample in terms of PC1 and PC2 and also shows how the initial variables map onto this (Picture 16).
+
+```{r, fig.height= 15, fig.width=15}
+fviz_pca_ind(all_data2.pca, geom.ind = "point", pointshape = 21, 
+             pointsize = 2, 
+             fill.ind = all_data$Sex, 
+             col.ind = "black", 
+             palette = "jco", 
+             addEllipses = TRUE,
+             label = "var",
+             col.var = "black",
+             repel = TRUE) +
+  ggtitle("2D PCA-plot") +
+  theme(plot.title = element_text(hjust = 0.5))
+```
+
+_Picture 16_ 2D-PCA plot of PC1 and PC2 components. 
+
+From this plot we can assume that "male" and "female" clasters hardly differ, while "uvenil" group claster. 
+Interpreting the results. Biplot for Principal Components using ggplot2 for PC1 and PC2 components (Picture 17).
+
+```{r, fig.height= 20, fig.width=10}
+#install_github("vqv/ggbiplot", force = TRUE)
+#require(ggbiplot)
+ggbiplot(all_data2.pca,
+  groups = all_data$Sex, ellipse = TRUE, scale = 1, circle = TRUE, varname.size = 5) +
+  scale_color_discrete(name = '') +
+  ggtitle("PCA of dataset") +
+  theme_minimal() +
+  theme(legend.direction = 'horizontal', legend.position = 'top')
+```
+
+_Picture 17_ Biplot for Principal Components using ggplot2 for PC1 and PC2 components.
+
+On this graph we see that "male" and "female" characterized by high values for all quantitative values. 
+
+Biplot for Principal Components using ggplot2 for PC3 and PC4 components (Picture 18).
+
+```{r, , fig.height= 10, fig.width=10}
+ggbiplot(all_data2.pca,
+  groups = all_data$Sex, ellipse = TRUE, scale = 1, choices = c(3,4), circle = TRUE, varname.size = 5) +
+  scale_color_discrete(name = '') +
+  theme_minimal()+
+  ggtitle("PCA of dataset") +
+  theme(legend.direction = 'horizontal', legend.position = 'top')
+```
+
+_Picture 18_ Biplot for Principal Components using ggplot2 for PC3 and PC4 components.
+
+PC3 and PC4 is not very informative. We can't separate data to groups or revealed apparent patterns. 
+
+Let's build linear regression of "Whole_weight" with PC1, PC2, PC3. 
+
+```{r}
+pcs <- as.data.frame(all_data2.pca$scores[,1:3])
+all_data_PCA <- cbind(all_data[,-1:-2], pcs)
+lmodel <- lm(all_data$Whole_weight ~ Comp.1 + Comp.2 + Comp.3 , data = all_data_PCA)
+summary(lmodel)
+```
+
+When comparing the two constructed models, we can notice that the Adjusted R-squared coefficient of the second model is better than in the first one.
