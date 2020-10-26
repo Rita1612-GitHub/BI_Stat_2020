@@ -377,8 +377,17 @@ The differences in diameter between the 5-Ring and 15-Ring are significant.
 
 Find out if there is a relationship between Diameter and Whole_weight?
 Based on the physiology of mussels, we can assume that there is a correlation between these variables.
-Let's check this by plotting "Whole_weight" versus "Diameter" and calculating the correlation coefficient (Picture 12).
-We can approximate our data using linear or non-linear model. 
+Check "Whole_weight" and "Diameter" is normally distributed:
+
+```{r}
+shapiro.test(all_data$Whole_weight)
+```
+```{r}
+shapiro.test(all_data$Diameter)
+```
+
+In both cases p-value < 0.05. It means that out values is not normally distributed. 
+Let's check this by plotting "Whole_weight" versus "Diameter" (Picture 12).
 
 ```{r}
 ggplot(all_data, aes(Diameter, Whole_weight))+
@@ -390,11 +399,12 @@ ggplot(all_data, aes(Diameter, Whole_weight))+
 
 _Picture 12_ The graph of the dependence of the "Whole Weight" variable on "Diameter".
 
-There is exponential relationship between variables. We can see that the non-linear model better describes our data. 
-If we calculate Pearson's correlation coefficient in linear model, it will be 0.932. This indicates a strong correlation between the variables.
+There is exponential relationship between variables. We can see that the non-linear model will better describe our data. 
+Because of non-normal distribution of values we can't use Pearson's correlation, we must use Spearman's correlation. 
+Sperman's correlation coefficient is 0.968. This indicates a strong relationship between the variables
 
 ```{r}
-cor.test(all_data$Diameter, all_data$Whole_weight)
+cor.test(all_data$Diameter, all_data$Whole_weight, method="spearman")
 ```
 
 ## Task 9
