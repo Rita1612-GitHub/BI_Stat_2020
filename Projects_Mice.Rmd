@@ -1,0 +1,371 @@
+---
+title: "Project_mice"
+output: html_document
+toc: yes
+    toc_position: right
+    toc_depth: 3
+    toc_float: yes
+    smooth_scroll: no
+    theme: united
+---
+
+```{r setup, include=FALSE, message = FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+#Packages
+require(MASS)
+require(dplyr)
+require(ggplot2)
+require(DAAG)
+require(GGally)
+require(reshape)
+require(ggcorrplot)
+require(Hmisc)
+require(psych)
+require(devtools)
+require(egg)
+require(stats)
+require(multcomp)
+require(car)
+require(vegan)
+require(factoextra)
+require(plotly)
+```
+
+## Task1.Data structure.
+
+doi:10.1371/journal.pone.0119491
+There is eight groups of mice (7–10 per group): trisomic and controls (Genotype variable), CS mice injected with saline or with memantine (Treatment variable) and SC mice injected with saline or with memantine, as described.CS - this is the context-shock (CS) group, SC - the shock-context group (Behavior variable).
+
+"Context fear conditioning (CFC) was performed as described [16,39,42]. Briefly, mice were placed in a novel cage (Med Associates, St. Albans, VT, Modular Mouse Test Chamber), allowed to explore for three minutes and then given an electric shock (2 s, 0.7 mA, constant electric current). These mice are the context-shock (CS) group and learn to associate the context with the aversive stimulus. These mice are the shock-context (SC) group and do not acquire conditioned fear."
+
+Data loading:
+
+```{r message=FALSE, warning=FALSE}
+data_mice <- read.csv('Data_Cortex_Nuclear.csv')
+str(data_mice)
+```
+
+NA values:
+
+```{r, message = FALSE}
+colSums(is.na(data_mice))
+```
+
+Number of observations by groups:
+
+```{r}
+data_mice$class <- as.factor(data_mice$class)
+#Число переменных в каждой группе, выделенной в зависимости от class
+summary(data_mice$class) #или table(data_mice$class)
+```
+
+There is a small variation in the number of observations in groups. The groups are not balanced. 
+
+## Task2. Dependency of BDNF_N variable on a class.
+
+It can be seen that the number of variables in the groups is not the same.
+
+```{r}
+summary(data_mice$BDNF_N ~ data_mice$class)
+```
+
+There are three NA values in the BDNF_N column (in the t-CS-s subgroup).
+
+```{r message=FALSE, warning=FALSE}
+theme_set(theme_bw())
+ggplot(data_mice, aes(class, BDNF_N, color = class)) + stat_summary(fun.data = "mean_cl_normal") + ggtitle(label = "BDNF_N")
+```
+
+_Picture 1_ Graph of BDNF_N dependence on the "class" variable.
+
+Let's check if there are differences in the level of BDNF_N production depending on the class in the experiment using Anova.
+
+We can use Anova if:
+-Normal distribution of residuals
+-Сonstancy of residuals variance 
+-Observation independence (no multicollinearity)
+-No influential observations
+
+Linear model:
+
+```{r}
+mod_mice <- lm(BDNF_N ~ Genotype*Treatment*Behavior, data = data_mice, contrasts = list(Genotype = contr.sum, Treatment = contr.sum, Behavior = contr.sum))
+summary(mod_mice)
+```
+
+--Observation independence (no multicollinearity):
+Let's calculate the value Variance inflation factor (VIF).
+
+```{r}
+vif(mod_mice)
+```
+
+There is no multicollinearity. All VIF values less than 2.
+
+--No influential observations (Picture 1)
+
+```{r}
+theme_set(theme_bw())
+mod_diag <- fortify(mod_mice)
+ggplot(mod_diag, aes(x = 1:nrow(mod_diag), y = .cooksd)) + geom_bar(stat = "identity") + ggtitle("Graph of Cook's distances")
+```
+
+_Picture 1_ Graph of Cook's distances
+
+None of the values exceed the conditional threshold of 2 units. No influential observations.
+
+--Normal distribution of residues (Picture 2)
+
+```{r}
+qqPlot(mod_diag$.stdresid, main = 'Graph Q-Q')
+```
+
+_Picture 2_ Q-Q graph.
+This is normal distribution.
+
+
+ANOVA
+
+```{r}
+mice_anova <- Anova(mod_mice, type = "III")
+mice_anova
+```
+
+We can notice that BDNF_N significantly depends on Treatment and Behavior. There is also a significant interaction of factors.
+Let us apply post hoc criteria to identify which groups there are differences in the average protein level.
+
+```{r, error=F, message=F}
+data_mice$inter <- interaction(data_mice$Genotype, data_mice$Treatment, data_mice$Behavior)
+
+mod_inter <- lm(BDNF_N ~ -1 + inter, data = data_mice)
+data_tukey <- glht(mod_inter, linfct = mcp(inter= 'Tukey') )
+summary(data_tukey)
+```
+
+Visualization of post hoc analysis:
+
+```{r}
+theme_set(theme_bw())
+MyData <- expand.grid(Genotype = levels(data_mice$Genotype), Treatment =levels(data_mice$Treatment), Behavior = levels(data_mice$Behavior))
+
+MyData <- data.frame(
+  MyData,
+  predict(mod_mice, newdata = MyData, interval = 'confidence')
+)
+
+pos <- position_dodge(width = 0.2)
+gg_linep <- ggplot(data = MyData, aes(x = Treatment, y = fit,
+                                      ymin = lwr, ymax = upr, colour = Genotype)) +
+  geom_point(position = pos) +
+  geom_errorbar(position = pos, width =0.2 )
+gg_linep
+```
+
+_Picture 3_ Influence of Treatment to BDNF_N level depending on the Genotype.
+
+```{r}
+theme_set(theme_bw())
+MyData <- expand.grid(Genotype = levels(data_mice$Genotype), Treatment =levels(data_mice$Treatment), Behavior = levels(data_mice$Behavior))
+
+MyData <- data.frame(
+  MyData,
+  predict(mod_mice, newdata = MyData, interval = 'confidence')
+)
+
+pos <- position_dodge(width = 0.2)
+gg_linep <- ggplot(data = MyData, aes(x = Behavior, y = fit,
+                                      ymin = lwr, ymax = upr, colour = Genotype)) +
+  geom_point(position = pos) +
+  geom_errorbar(position = pos, width =0.2 )
+gg_linep
+```
+
+_Picture 4_ Influence of Behavior to BDNF_N level depending on the Genotype.
+
+```{r}
+theme_set(theme_bw())
+MyData <- expand.grid(Genotype = levels(data_mice$Genotype), Treatment =levels(data_mice$Treatment), Behavior = levels(data_mice$Behavior))
+
+MyData <- data.frame(
+  MyData,
+  predict(mod_mice, newdata = MyData, interval = 'confidence')
+)
+
+pos <- position_dodge(width = 0.2)
+gg_linep <- ggplot(data = MyData, aes(x = Behavior, y = fit,
+                                      ymin = lwr, ymax = upr, colour = Treatment)) +
+  geom_point(position = pos) +
+  geom_errorbar(position = pos, width =0.2 )
+gg_linep
+```
+
+_Picture 5_ Influence of Behavior to BDNF_N level depending on the Treatment.
+
+Conclusions:
+1.Ts65Dn.Memantine.C/S - Control.Memantine.C/S == 0
+Memantine has different effects on BDNF_N of healthy mice and mice with Down syndrome.
+2.Control.Memantine.S/C - Control.Memantine.C/S == 0
+Context fear conditioning has an effect on BDNF_N even in healthy mice.
+3.Ts65Dn.Saline.C/S - Control.Saline.C/S == 0
+BDNF_N are really significantly different in healthy mice and mice with Down syndrome.
+4.Ts65Dn.Saline.S/C - Ts65Dn.Saline.C/S == 0
+Context fear conditioning has an effect on BDNF_N in mice with Down syndrome.
+5.Ts65Dn.Memantine.S/C - Control.Memantine.S/C == 0
+Memantine affects BDNF_N protein regardless of сontext fear conditioning.
+6.Control.Saline.S/C - Control.Memantine.S/C == 0
+The choice of drug affects on BDNF_N even in healthy mice.
+
+
+## Task3. Linear model of the ERBB4_N protein.
+
+Build a linear model capable of predicting the level of production of the ERBB4_N protein based on data on other proteins in the experiment
+
+Leave only numeric variables.
+
+```{r}
+data_mice_num <- select_if(data_mice, is.numeric)
+fit <- lm(ERBB4_N ~ ., data = data_mice_num)
+summary(fit)
+```
+
+The variable pS6_N is ideally collinear with ERBB4_N, its impact cannot be estimated. Let's exclude it from the model. 
+
+```{r}
+data_mice_num <- data_mice_num[,-71]
+fit <- lm(ERBB4_N ~ ., data = data_mice_num)
+summary(fit)
+```
+
+Let's diagnose the constructed linear model.
+Multicollinearity:
+
+```{r}
+sqrt(vif(fit))
+```
+
+There is great collinearity between variables.
+
+Resudials graph (Picture 6):
+
+```{r message=FALSE, warning=FALSE}
+theme_set(theme_bw())
+model_diag <- fortify(fit)
+ggplot(data = model_diag, aes(x = .fitted, y = .stdresid)) + 
+  geom_point() + 
+  geom_hline(yintercept = 0) +
+  geom_smooth() +
+  geom_hline(yintercept = 2, color = "red") +
+  geom_hline(yintercept = -2, color = "red")
+```
+
+_Picture 6_ The resudials graph.
+
+There is no pattern. 
+
+Graph of Cook's distances (Picture 7):
+
+```{r}
+theme_set(theme_bw())
+ggplot(mod_diag, aes(x = 1:nrow(mod_diag), y = .cooksd)) + geom_bar(stat = "identity") + ggtitle("Graph of Cook's distances")
+```
+
+_Picture 7_ Graph of Cook's distances
+
+There is no influential observations.
+
+Normal distribution of residues (Picture 8):
+
+```{r}
+qqPlot(model_diag$.stdresid, main = 'Graph Q-Q')
+```
+
+_Picture 8_ Q-Q graph. 
+
+There is a deviation from the normal distribution.
+
+Total, this is a bad model in all respects. It is necessary to exclude multicollinearity between variables. 
+
+## Task4. PCA analisys.
+
+Delete all NA values.
+
+```{r}
+data_mice_num_na <- na.omit(data_mice_num)
+mice_pca <- rda(data_mice_num_na, center = TRUE, scale = TRUE)
+head(summary(mice_pca))
+```
+
+Ordination plot using ggplot2 (Picture 9):
+
+```{r}
+df_scores <- data.frame(data_mice_num_na,
+                        scores(mice_pca, display = "sites", choices = c(1, 2, 3), scaling = "sites"))
+data_mice_na <- na.omit(data_mice)
+df_scores$class <- data_mice_na$class
+
+p_scores <- ggplot(df_scores, aes(x = PC1, y = PC2)) + 
+  geom_point(aes( color = class), alpha = 0.5) +
+  coord_equal(xlim = c(-1.2, 1.2), ylim = c(-1.2, 1.2)) + ggtitle(label = "Ordination plot") + theme_bw()
+p_scores
+```
+
+_Picture 9_ Ordination plot
+
+Now we can build scree plot of the variance (i.e. sdev^2) for every principle component (Picture 10).
+
+```{r}
+mice2_pca = princomp(data_mice_num_na, center = TRUE, scale = TRUE)
+screeplot(mice2_pca, type = "l", npcs = 7, xlab = "Components", ylab = "Variance", main = "Screeplot of the first 7 PCs")
+```
+
+_Picture 10_ Screeplot of the first 7 PCs.
+
+Also we can build Cumulative variance plot (Picture 11).
+
+```{r}
+plot(cumsum(mice2_pca$sdev^2 / sum(mice2_pca$sdev^2)), type= "b", xlab = "PCs", ylab = "Amount of explained variance", main = "Cumulative variance plot")
+abline(v = 3, col="blue", lty=5)
+abline(h = 0.995, col="blue", lty=5)
+```
+
+_Picture 11_ Cumulative variance plot for all PCs.
+
+Contribution of each component (Picture 12): 
+
+```{r}
+res.pca <- prcomp(data_mice_num_na, center = T, scale = TRUE)
+fviz_eig(res.pca)
+```
+
+_Picture 12_ Contribution of each component.
+
+We notice that the first 4 explains almost 90% of variance. We can effectively reduce dimensionality from 76 to 4. We can select number of components as 4 (PC1 to PC4) and we can use these 4 components as predictor variables in new model.
+
+```{r}
+data_mice_na <- na.omit(data_mice)
+sc <- as.data.frame(mice2_pca$scores)
+sc$class <- data_mice_na$class
+all_data_mice <- cbind(data_mice_num_na, sc[,1:4])
+
+lmodel <- lm(all_data_mice$ERBB4_N ~ Comp.1 + Comp.2 + Comp.3 + Comp.4 , data = all_data_mice)
+summary(lmodel)
+```
+
+When comparing the two constructed models, we can notice that the Adjusted R-squared coefficient of the second model is better than in the first one.
+
+3D PCA plot (Picture 13):
+
+```{r, fig.height=15, fig.width= 15}
+fig <- plot_ly(sc, x =~Comp.1, y = ~Comp.2, z = ~Comp.3, color = ~class, size = 5)
+fig <- fig %>% add_markers()
+fig <- fig %>% layout(scene = list(xaxis = list(title = 'PCA1'),
+                                   yaxis = list(title = 'PCA2'),
+                                   zaxis = list(title = 'PCA3')))
+fig
+```
+
+
+_Picture 13_ 3D PCA plot (P.S. I don't understand why it can't be drawn here. But if call "fig" in console, it is work)
+
+
+
