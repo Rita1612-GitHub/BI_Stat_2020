@@ -1,12 +1,16 @@
 ---
 title: "Project_mice"
-output: html_document
-toc: yes
+output:
+  html_document:
+    toc: yes
     toc_position: right
     toc_depth: 3
     toc_float: yes
     smooth_scroll: no
     theme: united
+  pdf_document:
+    toc: yes
+    toc_depth: '3'
 ---
 
 ```{r setup, include=FALSE, message = FALSE}
@@ -29,6 +33,8 @@ require(car)
 require(vegan)
 require(factoextra)
 require(plotly)
+require(DESeq2)
+require(purrr)
 ```
 
 ## Task1.Data structure.
@@ -367,5 +373,135 @@ fig
 
 _Picture 13_ 3D PCA plot (P.S. I don't understand why it can't be drawn here. But if call "fig" in console, it is work)
 
+## Task5.
+
+Differential expression with Deseq.
+
+```{r}
+mice_t <- data.frame(t(data_mice_na[ ,sapply(data_mice_na,is.numeric)]))
+cond <- data_mice_na %>% na.omit %>% keep(is.factor)
+colnames(mice_t) <- cond$MouseID
+proteins <- data_mice_na[ ,sapply(data_mice_na,is.numeric)]
+scale_p <- as.data.frame(sapply(proteins, scale)) %>% na.omit()
+rownames(mice_t) <- colnames(scale_p)
+mice_t[,1:552] <- mice_t[,1:552]*100
+
+colums <- names(mice_t)
+mice_t[,1:552] <- mice_t[,1:552] %>% mutate(across(colums, round))
+```
+
+Deseq. Group by Treatment:
+
+```{r, message=F}
+mice_t <- as.matrix(mice_t)
+dds = DESeqDataSetFromMatrix(countData=mice_t, colData=cond, design = ~ ~Treatment)
+dds <- DESeq(dds)
+res <- results(dds)
+res
+```
+
+volcanoplot:
+
+```{r, error=FALSE, message =FALSE}
+gdata <- data.frame(
+  x=res$log2FoldChange,
+  y=-log10(res$padj)
+)
+#png("Volcanoplot_before.png", 500, 500, pointsize=30)
+ggplot(data=gdata, aes(x=x, y=y, color = (res$padj<0.05))) +
+  geom_point(size=1) + theme_bw()  +
+  xlab("Log fold change") +
+  ylab("Adjusted p.value")
+#dev.off()
+
+```
+
+_Picture 14_ Volcanoplot for Treatment group
+
+Group by Behavior:
+
+```{r, message=F}
+dds2 = DESeqDataSetFromMatrix(countData=mice_t, colData=cond, design = ~Behavior)
+dds2 <- DESeq(dds2)
+res2 <- results(dds2)
+res2
+```
+
+```{r, error=FALSE, message =FALSE}
+gdata2 <- data.frame(
+  x=res2$log2FoldChange,
+  y=-log10(res2$padj)
+)
+#png("Volcanoplot_before.png", 500, 500, pointsize=30)
+ggplot(data=gdata2, aes(x=x, y=y, color = (res2$padj<0.05))) +
+  geom_point(size=1) + theme_bw()  +
+  xlab("Log fold change") +
+  ylab("Adjusted p.value")
+#dev.off()
+
+```
+
+_Picture 15_ Volcanoplot for Behavior group
+
+Group by Genotype:
+
+```{r, message=F}
+dds3 = DESeqDataSetFromMatrix(countData=mice_t, colData=cond, design = ~Genotype)
+dds3 <- DESeq(dds3)
+res3 <- results(dds3)
+res3
+```
+
+```{r, error=FALSE, message =FALSE}
+gdata3 <- data.frame(
+  x=res3$log2FoldChange,
+  y=-log10(res3$padj)
+)
+#png("Volcanoplot_before.png", 500, 500, pointsize=30)
+ggplot(data=gdata3, aes(x=x, y=y, color = (res3$padj<0.05))) +
+  geom_point(size=1) + theme_bw()  +
+  xlab("Log fold change") +
+  ylab("Adjusted p.value")
+#dev.off()
+
+```
+
+_Picture 16_ Volcanoplot for Genotype group
 
 
+Sorting.
+
+```{r, error=FALSE, message =FALSE}
+sorted <- res[with(res, order(padj, -log2FoldChange)), ]
+sorted2 <- res2[with(res2, order(padj, -log2FoldChange)), ]
+sorted3 <- res3[with(res3, order(padj, -log2FoldChange)), ]
+```
+
+Remove NA values. Filtering padj<0.05. Differential expressed proteins by Treatment group:
+
+```{r, error=FALSE, message =FALSE}
+sorted_df <- data.frame("id"=rownames(sorted),sorted)
+sorted_df <- na.omit(sorted_df) 
+p_adj_below_0.05 <- sorted_df %>% filter(padj<0.05) #filtering with padj
+rownames(p_adj_below_0.05)
+```
+
+Differential expressed proteins by Behavior group:
+
+```{r}
+sorted_df2 <- data.frame("id"=rownames(sorted2),sorted2)
+sorted_df2 <- na.omit(sorted_df2)
+p2_adj_below_0.05 <- sorted_df2 %>% filter(padj<0.05) #filtering with padj
+rownames(p2_adj_below_0.05)
+```
+
+Differential expressed proteins by Genotype group:
+
+```{r}
+sorted_df3 <- data.frame("id"=rownames(sorted3),sorted3)
+sorted_df3 <- na.omit(sorted_df3) 
+p3_adj_below_0.05 <- sorted_df3 %>% filter(padj<0.05) #filtering with padj
+rownames(p3_adj_below_0.05)
+```
+
+The data obtained show that different influences have different effects on differentially expressed proteins.
