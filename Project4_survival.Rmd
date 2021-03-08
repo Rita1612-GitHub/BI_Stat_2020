@@ -1,0 +1,223 @@
+---
+title: "Project4_survival_analysis"
+output: 
+  html_document:
+    toc: yes
+    toc_position: right
+    toc_depth: 3
+    toc_float: yes
+    smooth_scroll: no
+    theme: united
+---
+
+```{r setup, include=FALSE, message = FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+require('survival')
+require('ggplot2')
+require('dplyr')
+#install.packages('ggfortify')
+require('ggfortify')
+require('coin')
+theme_set(theme_bw())
+```
+
+## Reading data and EDA analysis
+
+Reading "ovarian" data from "survival" packages. Structure of this data frame:
+
+```{r}
+data_survival <- data.frame(ovarian)
+str(data_survival)
+```
+Discription:
+-futime:	survival or censoring time
+-fustat:	censoring status
+-age:	in years
+-resid.ds:	residual disease present (1=no,2=yes)
+-rx:	treatment group
+-ecog.ps:	ECOG performance status (1 is better, see reference)
+
+```{r}
+head(data_survival)
+```
+
+Let's check NA values:
+
+```{r}
+colSums(is.na(data_survival))
+```
+
+There are no NA values.
+
+Let's check outliers (Picture 1):
+
+```{r}
+boxplot(data_survival)
+```
+
+_Picture 1_ Histogramm of all variabilities.
+
+There are no outliers.
+
+change some variables to factor.
+
+```{r}
+data_survival$resid.ds <- factor(data_survival$resid.ds, levels = c(1,2), labels = c("No", "Yes"))
+data_survival$rx <- factor(data_survival$rx, levels = c(1,2), labels = c("Trial_1", "Trial_2"))
+data_survival$ecog.ps <- factor(data_survival$ecog.ps, levels = c(1,2), labels = c("Good", "No_good"))
+```
+
+Histogram of "age":
+
+```{r}
+m <- mean(data_survival$age)
+print(m)
+```
+
+```{r}
+hist(data_survival$age)
+```
+
+
+From this histogram we can see that age of patient divided into two groups: less then of mean values and more then mean values.
+
+```{r}
+data_survival <- data_survival %>% mutate(age_groups = ifelse(age >= m, "Group_1", "Group_2"))
+data_survival$age_groups <- factor(data_survival$age_groups)
+```
+
+Let's see data structure again:
+
+```{r}
+str(data_survival)
+```
+
+## Kaplan Meier Survival Curves
+
+Survival timeline:
+
+```{r}
+km <- with(data_survival, Surv(futime, fustat))
+km
+```
+
+- Next, we build a linear model that accounts for the factor-based change in survival over time.
+
+```{r}
+km_fit <- survfit(Surv(futime, fustat) ~ 1, data=data_survival)
+summary(km_fit, times = c(1,30,60,90*(1:10)))
+```
+
+```{r}
+autoplot(km_fit)
+```
+
+_Picture 2_ Model of survival over time.
+
+- Model of dependency of survival by the treatment group (Picture 2):
+
+```{r}
+km_trt_fit <- survfit(Surv(futime, fustat) ~ rx, data=data_survival)
+autoplot(km_trt_fit)
+```
+
+_Picture 2_ Model of dependency of survival by the treatment group.
+
+- survival by the age group (Picture 3):
+
+```{r}
+km_age_fit <- survfit(Surv(futime, fustat) ~ age_groups, data=data_survival)
+autoplot(km_age_fit)
+```
+
+_Picture 3_  Survival by the age group.
+
+- survival by the resid.ds group (Picture 4):
+
+```{r}
+km_resid_fit <- survfit(Surv(futime, fustat) ~ resid.ds, data=data_survival)
+autoplot(km_resid_fit)
+```
+
+_Picture 4_ Survival by the resid.ds group.
+
+- survival by the ecog.ps group (Picture 5):
+
+```{r}
+km_ecog_fit <- survfit(Surv(futime, fustat) ~ ecog.ps, data=data_survival)
+autoplot(km_ecog_fit)
+```
+
+_Picture 5_ Survival by the ecog.ps group
+
+## Sirvival statistics
+
+1. "rx" group
+
+```{r}
+survdiff(Surv(futime, fustat) ~ rx, data = data_survival)
+```
+
+```{r}
+data_survival$rx <- as.factor(data_survival$rx)
+logrank_test(Surv(futime, fustat) ~ rx, data_survival)
+```
+
+The p-value is greater than 0.05, therefore, we cannot reject the null hypothesis that the survival rates for two different groups are the same.
+
+2. "resid.ds" group
+
+```{r}
+survdiff(Surv(futime, fustat) ~ resid.ds, data = data_survival)
+```
+```{r}
+data_survival$resid.ds <- as.factor(data_survival$resid.ds)
+logrank_test(Surv(futime, fustat) ~ resid.ds, data_survival)
+```
+
+The p-value is greater than 0.05 too.
+
+
+3. "ecog.ps" group
+
+```{r}
+survdiff(Surv(futime, fustat) ~ ecog.ps, data = data_survival)
+```
+```{r}
+data_survival$ecog.ps <- as.factor(data_survival$ecog.ps)
+logrank_test(Surv(futime, fustat) ~ ecog.ps, data_survival)
+```
+
+The p-value is greater than 0.05 too.
+
+4. "age" group 
+
+```{r}
+survdiff(Surv(futime, fustat) ~ age_groups, data = data_survival)
+```
+```{r}
+data_survival$age_groups <- as.factor(data_survival$age_groups)
+logrank_test(Surv(futime, fustat) ~ age_groups, data_survival)
+```
+
+The p-value is greater than 0.05 too.
+There are no significant differences in survival by the all groups.
+
+## Risk factors analisys
+
+Cox model:
+
+```{r}
+cox <- coxph(Surv(futime, fustat) ~ age_groups + resid.ds + rx + ecog.ps , data = data_survival)
+summary(cox)
+```
+
+```{r}
+cox_fit <- survfit(cox)
+autoplot(cox_fit)
+```
+
+_Picture 6_ Cox model
+
+There is no significant factors which affect to survival. But age (less then 56 years), having no residual diseases and second type of treatment may affect to patient survival.
+
