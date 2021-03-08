@@ -1,0 +1,273 @@
+---
+title: "Project_2"
+output:
+  html_document:
+    toc: yes
+    toc_position: right
+    toc_depth: 3
+    toc_float: yes
+    smooth_scroll: no
+    theme: united
+  pdf_document:
+    toc: yes
+    toc_depth: '3'
+---
+
+```{r setup, include=FALSE, message = FALSE}
+options(width = 70, scipen = 16, digits = 3, scipen = 999) 
+knitr::opts_chunk$set(echo = TRUE, tidy = FALSE)
+```
+
+In this project we need to to estimate how the average house price in Boston in 197-1980 depends on various factors.
+
+```{r, message = FALSE, error=FALSE}
+# Packages
+require(MASS)
+require(dplyr)
+require(ggplot2)
+require(DAAG)
+require(GGally)
+require(reshape)
+require(ggcorrplot)
+require(Hmisc)
+require(psych)
+require(devtools)
+require(egg)
+```
+
+
+```{r packages, include=FALSE}
+library(MASS)
+library(plyr)
+library(ggpubr)
+library(dplyr)
+library(readr)
+library(ggplot2)
+library(car)
+library(scales)
+library(knitr)
+library(GGally)
+
+theme_set(theme_bw())
+```
+
+First, we need to download data from packages MASS (dataframe Boston) and view dataframe structure. 
+
+```{r}
+data_boston <- data.frame(Boston)
+str(data_boston)
+```
+
+The Boston data frame has 506 rows and 14 columns:
+1. crim (per capita crime rate by town)
+2. zn (proportion of residential land zoned for lots over 25,000 sq.ft.)
+3. indus (proportion of non-retail business acres per town)
+4. chas (Charles River dummy variable (= 1 if tract bounds river; 0 otherwise))
+5. nox (nitrogen oxides concentration (parts per 10 million))
+6. rm (average number of rooms per dwelling)
+7. age(proportion of owner-occupied units built prior to 1940)
+8. dis (weighted mean of distances to five Boston employment centres)
+9. rad (index of accessibility to radial highways)
+10. tax (full-value property-tax rate per \$10,000)
+11. ptratio (pupil-teacher ratio by town)
+12. black (1000(Bk - 0.63)^2 where Bk is the proportion of blacks by town)
+13. lstat (lower status of the population (percent))
+14. medv (median value of owner-occupied homes in \$1000s)
+
+In this dataframe "chas" variable is int type, but actually it's factor (0 or 1). Change type of this variable to factor.
+
+```{r}
+data_boston$chas <- as.factor(data_boston$chas)
+```
+
+Check if there are NA values in the data. 
+
+```{r}
+sum(is.na(data_boston))
+```
+
+Our data does not contain NA values.
+
+Let's check if the distribution of the variables is normal.
+
+```{r}
+lapply(data_boston[-4], shapiro.test)
+```
+
+For all variables p-value <0.05. It means that all variables has not normal distribution. 
+
+plot of dependence between all variables (Pictute 1).
+
+```{r, message = F, error = FALSE, warning=FALSE, fig.height=15, fig.width= 15}
+ggpairs(data_boston[-4],aes(color = data_boston$chas, alpha = 0.5), upper = list(continuous = wrap("cor", method = "spearman", size = 5)))
+```
+
+_Picture 1_  Pairwise comparison of variables.
+
+## Task 1. 
+
+Standardize of all variables and build full linear model without predictor's interactions.
+
+```{r}
+scale_boston <- as.data.frame(sapply(data_boston[-4],scale))
+scale_boston <- cbind(scale_boston, data_boston[4])
+```
+
+Liner full model:
+
+```{r}
+full_model <- lm(medv ~ crim+zn+indus+chas+nox+rm+age+dis+rad+tax+ptratio+black+lstat+tax, data = scale_boston)
+summary(full_model)
+```
+
+## Task 2. 
+
+DIAGNOSTICS OF THE MODEL
+
+## a. Linearity of the relationship
+It's can be checked using residual graph(Picture 2).
+
+```{r}
+model_diag <- fortify(full_model)
+ggplot(data = model_diag, aes(x = .fitted, y = .stdresid)) + 
+  geom_point() + 
+  geom_hline(yintercept = 0) +
+  geom_smooth() +
+  geom_hline(yintercept = 2, color = "red") +
+  geom_hline(yintercept = -2, color = "red")
+```
+
+_Picture 2_ Residual graph.
+
+The graph shows a pattern in residuals. 
+
+The other way to check this is graph of the dependence of medv on each predictors (Picture 3).
+
+```{r, message = FALSE, error= FALSE}
+plot_crim <- ggplot(scale_boston, aes(x=crim, y=medv)) + geom_point(aes(color = chas))
+plot_zn <- ggplot(scale_boston, aes(x=zn, y=medv)) + geom_point(aes(color = chas))
+plot_indus <- ggplot(scale_boston, aes(x=indus, y=medv)) + geom_point(aes(color = chas))
+plot_rm <- ggplot(scale_boston, aes(x=rm, y=medv)) + geom_point(aes(color = chas))
+plot_nox <- ggplot(scale_boston, aes(x=nox, y=medv)) + geom_point(aes(color = chas))
+plot_age <- ggplot(scale_boston, aes(x=age, y=medv)) + geom_point(aes(color = chas))
+plot_dis <- ggplot(scale_boston, aes(x=dis, y=medv)) + geom_point(aes(color = chas))
+plot_rad <- ggplot(scale_boston, aes(x=rad, y=medv)) + geom_point(aes(color = chas))
+plot_tax <- ggplot(scale_boston, aes(x=tax, y=medv)) + geom_point(aes(color = chas))
+plot_ptratio <- ggplot(scale_boston, aes(x=ptratio, y=medv)) + geom_point(aes(color = chas))
+plot_black <- ggplot(scale_boston, aes(x=black, y=medv)) + geom_point(aes(color = chas))
+plot_lstat <- ggplot(scale_boston, aes(x=lstat, y=medv)) + geom_point(aes(color = chas))
+
+ggarrange(plot_crim, plot_zn, plot_indus, plot_rm, plot_nox, plot_age, plot_dis, plot_rad, plot_tax, plot_ptratio, plot_black, plot_lstat)
+```
+
+_Picture 3_ Graph of the dependence of medv on each predictors 
+
+It can be seen from these graphs that there are nonlinear dependencies.
+
+## b. Checking for influential observations.
+
+Let's build a graph of Cook's distances (Picture 4). None of the values exceed the conditional threshold of 2 units. No influential observations.
+
+```{r}
+plot(full_model, which = 4)
+```
+
+_Picture 4_ Graph of Cook's distances
+
+##  c. Observation independence.
+
+Check for multicollinearity. 
+Let's calculate the value Variance inflation factor (VIF).
+
+```{r}
+vif(full_model) > 2
+```
+There is multicollinearity. 
+Correlation Coefficients (Picture 5).
+
+```{r}
+ggcorrplot(round(cor(scale_boston[,-14]), 1), hc.order = TRUE, 
+           type = "lower", 
+           lab = TRUE, 
+           lab_size = 3, 
+           method="circle", 
+           colors = c("tomato2", "white", "springgreen3"), 
+           title="Correlogram", 
+           ggtheme=theme_bw)
+```
+
+_Picture 5_ Correlogram
+
+## d. Normality of distribution and constancy of variance
+
+Errors are not quite normal distribution (Picture 6).
+
+```{r}
+qqPlot(model_diag$.stdresid, main = 'Graph Q-Q')
+```
+
+_Picture 6_ Graph Q-Q
+
+There are emissions. The distribution is not normal.
+
+## Task 3. 
+Plot the prediction value of the variable that has the largest modulo coefficient.
+
+The largest modulo coefficient for the lstat variable. Let's construct a linear model of the dependence of medv on this variable. 
+
+Normality of distribution of predicted values (Picture 7).
+
+```{r}
+qqPlot(model_diag$.fitted)
+```
+
+_Picture 7_ Graph Q-Q of predicted values.
+
+Calculate dataframe to predicted values.
+
+```{r}
+MyData <- data.frame(
+  lstat = seq(min(scale_boston$lstat), max(scale_boston$lstat), length.out = 506),
+  crim = mean(scale_boston$crim),
+  rad = median(scale_boston$rad),
+  chas = (scale_boston$chas),
+  zn = mean(scale_boston$zn),
+  indus = mean((scale_boston$indus)),
+  nox = mean((scale_boston$nox)),
+  rm = mean((scale_boston$rm)),
+  age = mean((scale_boston$age)),
+  dis = mean((scale_boston$dis)),
+  tax = mean((scale_boston$tax)),
+  ptratio = mean((scale_boston$ptratio)),
+  black = mean((scale_boston$black)))
+```
+
+This is predicted values:
+
+```{r}
+predictions <- predict(full_model, newdata = MyData,  interval = 'confidence')
+MyData <- data.frame(MyData, predictions)
+```
+
+Now let's build model prediction plot (Picture 8).
+```{r}
+ggplot(MyData, aes(x = lstat, y = fit, fill = chas)) +
+  geom_point(aes(x = scale_boston$lstat, y=scale_boston$medv))+
+  geom_ribbon(alpha = 0.2, aes(ymin = lwr, ymax = upr)) +
+  geom_line() + 
+  ggtitle("Multiple model")
+```
+
+_Picture 8_ Multiple model prediction plot from lstat predictors.
+
+Compare with multiple model with linear model (Picture 9).
+
+```{r}
+ggplot(data_boston, aes(x = lstat, y = medv, fill = chas)) +
+  geom_smooth(method = "lm", alpha = 0.2) 
+```
+
+_Picture 9_ Linear model medv ~ lstat. 
+
+Conclusion:
+Our multiply model is not perfect. There is a pattern in the residuals and multicollinearity. But it describes the data better, then linear model.
