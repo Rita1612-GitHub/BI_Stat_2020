@@ -18,6 +18,7 @@ require('dplyr')
 #install.packages('ggfortify')
 require('ggfortify')
 require('coin')
+require('survminer')
 theme_set(theme_bw())
 ```
 
@@ -70,11 +71,6 @@ data_survival$ecog.ps <- factor(data_survival$ecog.ps, levels = c(1,2), labels =
 Histogram of "age":
 
 ```{r}
-m <- mean(data_survival$age)
-print(m)
-```
-
-```{r}
 hist(data_survival$age)
 ```
 
@@ -82,7 +78,7 @@ hist(data_survival$age)
 From this histogram we can see that age of patient divided into two groups: less then of mean values and more then mean values.
 
 ```{r}
-data_survival <- data_survival %>% mutate(age_groups = ifelse(age >= m, "Group_1", "Group_2"))
+data_survival <- data_survival %>% mutate(age_groups = ifelse(age >= 60, "Group_1", "Group_2"))
 data_survival$age_groups <- factor(data_survival$age_groups)
 ```
 
@@ -150,6 +146,8 @@ autoplot(km_ecog_fit)
 
 _Picture 5_ Survival by the ecog.ps group
 
+There are no differences in survival between all groups.
+
 ## Sirvival statistics
 
 1. "rx" group
@@ -200,8 +198,7 @@ data_survival$age_groups <- as.factor(data_survival$age_groups)
 logrank_test(Surv(futime, fustat) ~ age_groups, data_survival)
 ```
 
-The p-value is greater than 0.05 too.
-There are no significant differences in survival by the all groups.
+The p-value is less than 0.05. It means that "age" significantly affects survival. 
 
 ## Risk factors analisys
 
@@ -219,5 +216,23 @@ autoplot(cox_fit)
 
 _Picture 6_ Cox model
 
-There is no significant factors which affect to survival. But age (less then 56 years), having no residual diseases and second type of treatment may affect to patient survival.
+```{r}
+aa_fit <- aareg(Surv(futime, fustat) ~ age_groups + resid.ds + rx + ecog.ps, data = data_survival)
+autoplot(aa_fit)
+```
 
+
+_Picture 7_ Analysis of covariance
+
+There is no significant factors which affect to survival, except "age" (less then 60 years). And having no residual diseases and second type of treatment may affect to patient survival.
+
+Hazard Ratio
+
+```{r}
+fit.coxph <- coxph(Surv(futime, fustat) ~ age_groups + resid.ds + rx + ecog.ps, data = data_survival)
+ggforest(fit.coxph, data = data_survival)
+```
+
+_Picture 8_ Hazard ratio
+
+Conclusion: only "age" factor significantly affects survival.
