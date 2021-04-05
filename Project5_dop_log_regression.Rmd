@@ -1,0 +1,261 @@
+---
+title: "Project_survival_dop"
+output: md_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+require('ggplot2')
+require('dplyr')
+require('ggfortify')
+require('coin')
+require('survminer')
+require('car')
+require("GGally")
+require("cowplot")
+require('ROCR')
+require('caret')
+#install.packages('e1071', dependencies=TRUE)
+theme_set(theme_bw())
+```
+
+
+### Reading data and EDA analysis
+
+```{r}
+data <- read.csv('https://stats.idre.ucla.edu/stat/data/binary.csv')
+str(data)
+```
+
+Dataset description:
+A researcher is interested in how variables, such as GRE (Graduate Record Exam scores), GPA (grade point average) and prestige of the undergraduate institution, effect admission into graduate school. The response variable, admit/don’t admit, is a binary variable.
+
+```{r}
+head(data)
+```
+
+Let's check NA values:
+
+```{r}
+colSums(is.na(data))
+```
+
+There are no NA values.
+
+Let's check outliers (Picture 1):
+
+```{r}
+boxplot(data[,2:3])
+```
+
+_Picture 1_ Boxplot of gre and gpa variabilities.
+
+There are three outliers, but I don't want to delete them.
+
+Rename "0" and "1" in admit variabeles to "no" and "yes". Also let's transform rank in factor format.
+
+```{r}
+data$admit <- as.factor(data$admit)
+levels(data$admit) <- c("no", "yes")
+data$rank <- as.factor(data$rank)
+str(data)
+```
+
+Histogram of "gre" variables (Picture 2).
+
+```{r}
+hist(data$gre)
+```
+
+_Picture 2_ Histogram of gre variables
+
+Histogram of "gpa" variables (Picture 3).
+
+```{r}
+hist(data$gpa)
+```
+
+_Picture 3_ Histogram of gpa variables
+
+
+### Log regression
+
+Let's see at the interaction of all variables (Picture 4).
+
+```{r, message = F, error = F, warning = F}
+ggpairs(data ,aes(color = data$admit, alpha = 0.5), upper = list(continuous = wrap("cor", method = "spearman", size = 4)))
+```
+
+_Picture 4_ Interaction of all variables.
+
+Logistic model:
+
+```{r}
+mod <- glm(admit ~ gre + gpa + rank, family = binomial(link = 'logit'), data = data)
+summary(mod)
+```
+
+```{r}
+Anova(mod)
+```
+
+All of variables are significant.
+
+Find optimal model.
+
+```{r}
+drop1(mod, test = "Chi")
+```
+
+There is no reason to find optimal model. It is already optimal.
+
+Model diagnostics:
+
+-Linearity check (Picture 5)
+It’s can be checked using residual graph
+
+```{r, message = F, error =F}
+mod_diag <- data.frame(.fitted = fitted(mod, type = 'response'),
+                        .resid_p = resid(mod, type = 'pearson'))
+
+ggplot(mod_diag, aes(y = .resid_p, x = .fitted)) + 
+  geom_point() +
+  theme_bw() +
+  geom_hline(yintercept = 0) +  
+  geom_smooth(method = 'loess')
+```
+
+_Picture 5_ Residual graph.
+
+Linearity is not broken.
+
+-Check superdispersion
+
+```{r}
+overdisp_fun <- function(model) {
+  rdf <- df.residual(model) 
+  if (any(class(model) == 'negbin')) rdf <- rdf - 1 
+  rp <- residuals(model,type='pearson') 
+  Pearson.chisq <- sum(rp^2) 
+  prat <- Pearson.chisq/rdf  
+  pval <- pchisq(Pearson.chisq, df=rdf, lower.tail=FALSE) 
+  c(chisq=Pearson.chisq,ratio=prat,rdf=rdf,p=pval)     
+}
+
+overdisp_fun(mod)
+```
+
+This model has no superdispersion.
+
+-Check multicollinearity
+
+```{r}
+vif(mod) > 2
+```
+
+There is no multicollinerity.
+
+### Model prediction and visualization
+
+Create an artificial dataset.
+
+```{r}
+new_data <- data %>% group_by(rank) %>% do(data.frame(gpa = seq(from = min(.$gpa), to = max(.$gpa), length.out = 100), gre = mean(.$gre)))
+
+X <- model.matrix(~ gre + gpa + rank, data = new_data)
+b <- coef(mod)
+
+new_data$fit_eta <- X %*% b
+new_data$se_eta <- sqrt(diag(X %*% vcov(mod) %*% t(X)))
+
+logit_back <- function(x) exp(x)/(1 + exp(x)) 
+
+new_data$fit_pi <- logit_back(new_data$fit_eta)
+
+new_data$lwr_pi <- logit_back(new_data$fit_eta - 2 * new_data$se_eta)
+new_data$upr_pi <- logit_back(new_data$fit_eta + 2 * new_data$se_eta)
+
+head(new_data, 2)
+```
+
+
+Prediction graph in connection scale function (Picture 6):
+
+```{r}
+ggplot(new_data, aes(x = gpa, y = fit_eta, fill = rank))  + 
+  geom_line(aes(color = rank)) +
+  geom_ribbon(aes(ymin = fit_eta - 2 * se_eta, ymax = fit_eta + 2 * se_eta), alpha = 0.5)+
+  theme_bw()
+```
+
+_Picture 6_ "gpa" prediction
+
+Prediction graph at response scale (Picture 7):
+
+```{r}
+ggplot(new_data, aes(x = gpa, y = fit_pi, fill = rank)) +
+  geom_ribbon(aes(ymin = lwr_pi, ymax = upr_pi), alpha = 0.5) +
+  geom_line(aes(color = rank)) +
+  labs(y='Probability', x = 'Gpa point', title = 'Probability of going to university') +
+  theme_bw()
+```
+
+
+### ROC curve
+
+ROC curve (Picture 7):
+
+```{r}
+data$responce <- predict(mod, type = 'response')
+prediction <- prediction(data$responce, data$admit)
+perf <- performance(prediction, "tpr", "fpr")
+plot(perf, colorize=T)
+```
+
+_Picture 7_ ROC curve
+
+AUC:
+
+```{r}
+auc.tmp <- performance(prediction,"auc") 
+auc <- as.numeric(auc.tmp@y.values)
+print(auc)
+```
+
+Optimal cutoff :
+
+```{r}
+opt.cut = function(perf, prediction){
+    cut.ind = mapply(FUN=function(x, y, p){
+        d = (x - 0)^2 + (y-1)^2
+        ind = which(d == min(d))
+        c(sensitivity = y[[ind]], specificity = 1-x[[ind]], 
+            cutoff = p[[ind]])
+    }, perf@x.values, perf@y.values, prediction@cutoffs)
+}
+print(opt.cut(perf, prediction))
+```
+
+Confusion matrix:
+
+```{r}
+#install.packages('e1071', dependencies=TRUE)
+data$responce2 <- ifelse(data$responce >= 0.3539422, 'yes', 'no')
+data$responce2 <- as.factor(data$responce2)
+confusionMatrix(data$responce2, data$admit)
+```
+
+Chart of successful prediction (Picture 8):
+
+```{r}
+data$true <- ifelse(data$admit == data$responce2, "Yes", "No")
+
+ggplot(data, aes(y = gre, x = gpa)) +
+  geom_point(aes(color = true))
+```
+
+_Picture 8_ Chart of successful predictions.
+
+As we can see from the chart above, there are more green dots than red ones. 
+
+
